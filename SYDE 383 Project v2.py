@@ -26,9 +26,6 @@ Initial_height = 0.08 + 0.02 + (Current_tube_length*math.sin(1/150))
 Final_height =  0.02 +  (Current_tube_length*math.sin(1/150))
 Average_height = (Initial_height+Final_height)/2
 
-
-
-
 def find_time_to_drain (length):
 
     l = length
@@ -67,6 +64,9 @@ def compute_friction_factor(length):
     if Re < 2300:
         new_friction = 64 / Re
         return new_friction
+    # translational case
+    # elif 
+    # turblent case
     else:
         # If you use Colebrook, perform iteration for turbulent flow
         print("This is turbulent flow, we are using Colebrook equation")
@@ -85,4 +85,4 @@ def compute_friction_factor(length):
 
     
 time = find_time_to_drain(Current_tube_length)
-print(time)
+print(f"The time is{time}")
