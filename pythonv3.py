@@ -1,56 +1,3 @@
-
-# dt = 1
-# h = 
-# final_h =
-# tolerance = 1e-6
-
-
-# def compute_v():
-    # pass
-
-# def computer_f():
-"""
-check if it is laminar, trnasitions, turbulent
-    in the if statement calculate f for each case using different equations 
-"""
-    # pass
-
-# def simulate_drainage():
-"""
-iterate f values for each incremental height
-
-while h > hf
-    f = 0.02 -> initial guess
-
-    for i in range(1000)
-        v = computer_v(f, h, L)
-        f_new, Re = compute_Re+f(v)
-
-        if abs(new_f - f) < tol:
-            break
-        f = new_f
-
-    dhdt = (Ap / At) * v
-    h = dhdt * dt
-    h = max(h, hf)
-
-    time += dt -> in seconds
-    increments += 1
-    veolcity_sum += v
-    f_sum += f
-    Re_sum += Re
-
-avrage_v = veolcity_sum/steps
-average_f_sum = f_sum/steps
-average_Re_sum = Re_sum/steps
-
-timestring = time but converted into minutes and second....
-
-return time_string, avrage_v, average_f_sum, average_Re_sum
-        
-"""
-    # pass
-
 import math
 
 # -----------------------------
@@ -64,10 +11,10 @@ Ap = math.pi * (D / 2) ** 2  # pipe cross-sectional area (m^2)
 At = 0.1  # assumed tank cross-sectional area (m^2) — adjust if known
 tol = 1e-6  # tolerance for friction factor convergence
 dt = 1.0  # time step in seconds
-# hf = 0  # final water height (m)
-# h0 = 0.08  # initial water height (m) — 8 cm
-k = 0.3 # coefficent for contraction
-rel_pipe_roughness = 0.00015/0.00794 #relative roughness (epislon/diameter)
+k = 0.5 # coefficent for contraction
+eps = 1.5e-6  # roughness height (m) — assume plastic pipe
+from scipy.optimize import fsolve
+rel_pipe_roughness = eps/D #relative roughness (epislon/diameter)
 
 # -----------------------------
 # Velocity Calculation
@@ -75,48 +22,11 @@ rel_pipe_roughness = 0.00015/0.00794 #relative roughness (epislon/diameter)
 def compute_v(f, h, L):
     """Calculate outlet velocity using modified Torricelli with friction loss."""
     veloctiy = math.sqrt((2 * g * h) / (1 + k + f * L / D))
-    print(f"v: {veloctiy}")
+    #print(f"v: {veloctiy}")
     return veloctiy
 
-def colebrook_newton(Re, D, eps, tol=1e-6, max_iter=1000):
-    """
-    Solves the Colebrook equation for turbulent flow using Newton-Raphson method.
-    Parameters:
-        Re      : Reynolds number (dimensionless)
-        D       : pipe diameter (m)
-        eps     : roughness height (m)
-        tol     : tolerance for convergence
-        max_iter: maximum number of iterations
-    Returns:
-        f       : Darcy friction factor
-    """
-
-    if Re <= 0:
-        raise ValueError("Reynolds number must be positive.")
-
-    # Initial guess
-    f = 0.02
-
-    for i in range(max_iter):
-        sqrt_f = math.sqrt(f)
-        lhs = 1 / sqrt_f
-        rhs = -2.0 * math.log10((eps / D) / 3.7 + 2.51 / (Re * sqrt_f))
-        func = lhs - rhs
-
-        # Derivative of the function wrt f (from chain rule)
-        dfdx = (-0.5 / f ** 1.5) + \
-               (2.0 * 2.51) / (math.log(10) * Re * ((eps / D) / 3.7 + 2.51 / (Re * sqrt_f)) * f ** 1.5)
-
-        # Newton-Raphson update
-        f_new = f - func / dfdx
-
-        if abs(f_new - f) < tol:
-            return f_new
-
-        f = f_new
-
-    # If it did not converge
-    raise RuntimeError("Colebrook-Newton solver did not converge.")
+def colebrook(f, Re, eps, D):
+    return 1.0 / math.sqrt(f) + 2.0 * math.log10((eps / D) / 3.7 + 2.51 / (Re * math.sqrt(f)))
 
 # -----------------------------
 # Friction Factor Calculation
@@ -126,33 +36,47 @@ def compute_f_and_re(v):
     Re = (rho * v * D) / mu
 
     if Re < 2300:
-        print("\n This is laminar flow")
+        print("\n This is laminar flow with ",Re)
         f = 64 / Re  # Laminar
     elif 2300 <= Re < 4000:
 
-        print("\n This is transitional flow")
+        print("\n This is transitional flow", Re)
         # Linear interpolation between laminar and turbulent
         f_laminar = 64 / Re
 
         # Haaland approximation (approximate Colebrook)
-        # f_turblent = (-1.8 * math.log10((6.9 / Re))) ** -2
+
+
+        #Newton approximation using fsolve
+        f_guess = 0.02   
+        f_turbulent = fsolve(colebrook, f_guess, args=(Re, eps, D))
+        f_turbulent_float = float(f_turbulent[0])
 
         # s-jain
         # f_turbulent = 0.25 / (math.log10(rel_pipe_roughness / (3.7) + 5.74 / Re**0.9))**2
-        f_turblent = colebrook_newton(Re, D, rel_pipe_roughness)
+        #f_turblent = colebrook_newton(Re, D, rel_pipe_roughness)
         # scale factor between 0 (at Re=2300) and 1 (at Re=4000)
         scale = (Re - 2300) / (4000 - 2300)
-        f = f_laminar + scale * (f_turblent - f_laminar)
+        f = f_laminar + scale * (f_turbulent_float- f_laminar)
     else:
-        print("\n This is turbulent flow")
+        print("\n This is turbulent flow", Re)
         # Turbulent flow — use approximate Colebrook-White via Haaland's equation
 
         # Haaland approximation (approximate Colebrook)
-        # f = (-1.8 * math.log10((6.9 / Re))) ** -2
+        #f = (-1.8 * math.log10((6.9 / Re))) ** -2
+
+        #Newton approximation using fsolve
+        f_guess = 0.02   
+        f_solution = fsolve(colebrook, f_guess, args=(Re, eps, D))
+        f = float(f_solution[0])
+        print(f"Friction factor: {f:.6f}")
+
 
         # s-jain
         # f = 0.25 / (math.log10(rel_pipe_roughness / (3.7) + 5.74 / Re**0.9))**2
-        f = colebrook_newton(Re, D, rel_pipe_roughness)
+        # f= colebrook_newton(Re, D, rel_pipe_roughness)
+
+    print(f"This is friction: {f:.6f}")  
     return f, Re
 
 # -----------------------------
